@@ -1,3 +1,6 @@
 [submodule "creates/download-core"]
 	path = creates/download-core
 	url = https://github.com/khodemadi/download-core.git
+[submodule "download-core"]
+	path = download-core
+	url = https://github.com/khodemadi/download-core.git
