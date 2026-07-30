@@ -1564,7 +1564,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-cli"
-version = "0.1.0-alpha.1"
+version = "0.2.2-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-core"
-version = "0.1.0-alpha.1"
+version = "0.2.2-alpha.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-get-desktop"
-version = "0.1.0-alpha.1"
+version = "0.2.2-alpha.1"
 dependencies = [
  "hyper-core",
  "serde",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-native-host"
-version = "0.1.0-alpha.1"
+version = "0.2.2-alpha.1"
 dependencies = [
  "serde_json",
  "uuid",

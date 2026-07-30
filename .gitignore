@@ -16,3 +16,4 @@ dist/
 *.exe
 extensions/browser/dist/
 extensions/browser/packages/
+/release/
