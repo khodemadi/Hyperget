@@ -374,3 +374,7 @@ Hyper Get فقط باید منابعی را دانلود کند که کاربر 
 ## مجوز
 
 MIT License.
+
+## خروجی ویندوز
+
+Workflow با نام `Release installers` روی runner واقعی ویندوز، نصب‌کننده‌های NSIS با پسوند `.exe` و WiX با پسوند `.msi` را همراه `SHA256SUMS-windows.txt` می‌سازد. برای دریافت خروجی، یک Tag مثل `v0.1.0-alpha.1` Push کنید یا Workflow را دستی اجرا کنید و Artifact با نام `hyper-get-windows-*` را دانلود کنید. فایل ویندوز از محیط لینوکس قابل تأیید نهایی نیست.

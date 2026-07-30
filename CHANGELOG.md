@@ -3,4 +3,5 @@
 ### Added
 - Persistent SQLite download queue, resumable streaming core, CLI, and Tauri desktop shell.
 - Remote metadata probing, validators, checksum verification, lifecycle validation, and recovery.
-
+- Persistent priority ordering, concurrency scheduling, aggregate live status, and rate limits.
+- Windows NSIS/MSI release jobs with SHA-256 checksums.

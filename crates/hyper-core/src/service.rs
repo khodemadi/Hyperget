@@ -1,6 +1,6 @@
 use crate::{
     AddDownloadRequest, DownloadFilter, DownloadId, DownloadSnapshot, DownloadState, Error, GlobalStatus,
-    Result, http, verify,
+    Priority, Result, Settings, http, verify,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -29,6 +29,10 @@ pub trait DownloadService {
     async fn start_all(&self) -> Result<()>;
     async fn pause_all(&self) -> Result<()>;
     async fn global_status(&self) -> Result<GlobalStatus>;
+    async fn reorder(&self, ids: Vec<DownloadId>) -> Result<()>;
+    async fn set_priority(&self, id: DownloadId, priority: Priority) -> Result<()>;
+    async fn settings(&self) -> Result<Settings>;
+    async fn update_settings(&self, settings: Settings) -> Result<()>;
 }
 
 #[derive(Clone)]
@@ -37,6 +41,9 @@ pub struct DownloadManager {
     client: reqwest::Client,
     tasks: Arc<Mutex<HashMap<DownloadId, CancellationToken>>>,
     default_dir: PathBuf,
+    scheduler: Arc<Mutex<()>>,
+    speeds: Arc<Mutex<HashMap<DownloadId, u64>>>,
+    global_rate_gate: Arc<Mutex<std::time::Instant>>,
 }
 impl DownloadManager {
     pub fn open(db: impl AsRef<Path>, default_dir: impl Into<PathBuf>) -> Result<Self> {
@@ -49,7 +56,44 @@ impl DownloadManager {
             client,
             tasks: Default::default(),
             default_dir: default_dir.into(),
+            scheduler: Default::default(),
+            speeds: Default::default(),
+            global_rate_gate: Arc::new(Mutex::new(std::time::Instant::now())),
         })
+    }
+    async fn schedule(&self) -> Result<()> {
+        let _guard = self.scheduler.lock().await;
+        let settings = self.store.lock().await.settings()?;
+        if !settings.auto_start_next {
+            return Ok(());
+        }
+        let slots = usize::from(settings.maximum_simultaneous_downloads)
+            .saturating_sub(self.tasks.lock().await.len());
+        let queued = self.store.lock().await.list(&DownloadFilter {
+            state: Some(DownloadState::Queued),
+            search: None,
+        })?;
+        for d in queued.into_iter().take(slots) {
+            self.spawn(d.id)?;
+        }
+        Ok(())
+    }
+    fn spawn(&self, id: DownloadId) -> Result<()> {
+        let mut tasks = self
+            .tasks
+            .try_lock()
+            .map_err(|_| Error::Task("scheduler task lock busy".into()))?;
+        if tasks.contains_key(&id) {
+            return Ok(());
+        }
+        let token = CancellationToken::new();
+        tasks.insert(id, token.clone());
+        drop(tasks);
+        let this = self.clone();
+        tokio::spawn(async move {
+            let _ = this.run(id, token).await;
+        });
+        Ok(())
     }
     async fn run(&self, id: DownloadId, token: CancellationToken) -> Result<()> {
         let result = self.run_inner(id, token).await;
@@ -57,6 +101,8 @@ impl DownloadManager {
             let _ = self.store.lock().await.fail(id, &e.to_string());
         }
         self.tasks.lock().await.remove(&id);
+        self.speeds.lock().await.remove(&id);
+        let _ = Box::pin(self.schedule()).await;
         result
     }
     async fn run_inner(&self, id: DownloadId, token: CancellationToken) -> Result<()> {
@@ -129,13 +175,43 @@ impl DownloadManager {
         let mut received = actual;
         let mut stream = response.bytes_stream();
         let mut last = std::time::Instant::now();
+        let mut last_bytes = received;
+        let mut per_download_next = std::time::Instant::now();
         while let Some(chunk) = tokio::select! {_=token.cancelled()=>{file.flush().await?;self.store.lock().await.progress(id,received,meta.total)?;return Ok(())},v=stream.next()=>v}
         {
             let chunk = chunk?;
+            let settings = self.store.lock().await.settings()?;
+            if settings.global_speed_limit_bytes > 0 {
+                let delay = std::time::Duration::from_secs_f64(
+                    chunk.len() as f64 / settings.global_speed_limit_bytes as f64,
+                );
+                let mut gate = self.global_rate_gate.lock().await;
+                let now = std::time::Instant::now();
+                let target = (*gate).max(now);
+                *gate = target + delay;
+                drop(gate);
+                if target > now {
+                    tokio::time::sleep_until(target.into()).await;
+                }
+            }
+            if let Some(limit) = d.per_download_speed_limit.filter(|n| *n > 0) {
+                let now = std::time::Instant::now();
+                if per_download_next > now {
+                    tokio::time::sleep_until(per_download_next.into()).await;
+                }
+                per_download_next = per_download_next.max(now)
+                    + std::time::Duration::from_secs_f64(chunk.len() as f64 / limit as f64);
+            }
             file.write_all(&chunk).await?;
             received += chunk.len() as u64;
             if last.elapsed() >= std::time::Duration::from_millis(250) {
                 self.store.lock().await.progress(id, received, meta.total)?;
+                let elapsed = last.elapsed().as_secs_f64();
+                self.speeds
+                    .lock()
+                    .await
+                    .insert(id, ((received - last_bytes) as f64 / elapsed) as u64);
+                last_bytes = received;
                 last = std::time::Instant::now();
             }
         }
@@ -190,6 +266,9 @@ impl DownloadService for DownloadManager {
             temporary_directory: temp,
             state: DownloadState::Queued,
             queue_position: 0,
+            priority: Priority::Normal,
+            start_immediately: r.start_immediately,
+            per_download_speed_limit: None,
             total_bytes: None,
             downloaded_bytes: 0,
             connection_count: r.connections.clamp(1, 32),
@@ -197,13 +276,14 @@ impl DownloadService for DownloadManager {
             last_modified: None,
             checksum_sha256: r.checksum_sha256,
             created_at: now.clone(),
+            started_at: None,
             updated_at: now,
             completed_at: None,
             error: None,
         };
         self.store.lock().await.insert(&d)?;
         if r.start_immediately {
-            self.start(id).await?
+            self.schedule().await?
         }
         Ok(id)
     }
@@ -218,17 +298,10 @@ impl DownloadService for DownloadManager {
                 to: DownloadState::Connecting,
             });
         }
-        let mut tasks = self.tasks.lock().await;
-        if tasks.contains_key(&id) {
-            return Err(Error::AlreadyActive);
+        if d.state != DownloadState::Queued {
+            self.store.lock().await.transition(id, DownloadState::Queued)?;
         }
-        let token = CancellationToken::new();
-        tasks.insert(id, token.clone());
-        let this = self.clone();
-        tokio::spawn(async move {
-            let _ = this.run(id, token).await;
-        });
-        Ok(())
+        self.schedule().await
     }
     async fn pause(&self, id: DownloadId) -> Result<()> {
         let d = self.get(id).await?;
@@ -285,14 +358,11 @@ impl DownloadService for DownloadManager {
     }
     async fn start_all(&self) -> Result<()> {
         for d in self.list(Default::default()).await? {
-            if matches!(
-                d.state,
-                DownloadState::Queued | DownloadState::Paused | DownloadState::Failed
-            ) {
-                self.start(d.id).await?
+            if matches!(d.state, DownloadState::Paused | DownloadState::Failed) {
+                self.store.lock().await.transition(d.id, DownloadState::Queued)?;
             }
         }
-        Ok(())
+        self.schedule().await
     }
     async fn pause_all(&self) -> Result<()> {
         for d in self.list(Default::default()).await? {
@@ -305,22 +375,48 @@ impl DownloadService for DownloadManager {
     async fn global_status(&self) -> Result<GlobalStatus> {
         let all = self.list(Default::default()).await?;
         let mut g = GlobalStatus::default();
+        let speeds = self.speeds.lock().await.clone();
         for d in all {
-            g.downloaded_bytes += d.downloaded_bytes;
+            g.total += 1;
             if let Some(n) = d.total_bytes {
-                g.known_total_bytes += n
+                g.known_total_bytes += n;
+                g.downloaded_bytes += d.downloaded_bytes.min(n)
+            } else {
+                g.unknown_size += 1;
             }
             match d.state {
                 DownloadState::Queued => g.queued += 1,
                 DownloadState::Paused => g.paused += 1,
                 DownloadState::Completed => g.completed += 1,
                 DownloadState::Failed => g.failed += 1,
-                s if s.is_active() => g.active += 1,
+                s if s.is_active() => {
+                    g.active += 1;
+                    g.active_connections += u32::from(d.connection_count);
+                    g.combined_speed += speeds.get(&d.id).copied().unwrap_or(0);
+                }
                 _ => {}
             }
         }
         g.percentage =
             (g.known_total_bytes > 0).then(|| g.downloaded_bytes as f64 * 100.0 / g.known_total_bytes as f64);
+        if g.combined_speed > 0 && g.known_total_bytes > g.downloaded_bytes {
+            g.eta_seconds = Some((g.known_total_bytes - g.downloaded_bytes) / g.combined_speed);
+        }
         Ok(g)
+    }
+    async fn reorder(&self, ids: Vec<DownloadId>) -> Result<()> {
+        self.store.lock().await.reorder(&ids)?;
+        self.schedule().await
+    }
+    async fn set_priority(&self, id: DownloadId, priority: Priority) -> Result<()> {
+        self.store.lock().await.set_priority(id, priority)?;
+        self.schedule().await
+    }
+    async fn settings(&self) -> Result<Settings> {
+        self.store.lock().await.settings()
+    }
+    async fn update_settings(&self, settings: Settings) -> Result<()> {
+        self.store.lock().await.update_settings(&settings)?;
+        self.schedule().await
     }
 }

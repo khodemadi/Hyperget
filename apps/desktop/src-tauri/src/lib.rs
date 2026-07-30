@@ -45,6 +45,52 @@ async fn pause_all(s: tauri::State<'_, State>) -> Cmd<()> {
 async fn get_global_status(s: tauri::State<'_, State>) -> Cmd<hyper_core::GlobalStatus> {
     s.0.global_status().await.map_err(err)
 }
+#[tauri::command]
+async fn reorder_downloads(s: tauri::State<'_, State>, ids: Vec<DownloadId>) -> Cmd<()> {
+    s.0.reorder(ids).await.map_err(err)
+}
+#[tauri::command]
+async fn set_download_priority(
+    s: tauri::State<'_, State>,
+    id: DownloadId,
+    priority: hyper_core::Priority,
+) -> Cmd<()> {
+    s.0.set_priority(id, priority).await.map_err(err)
+}
+#[tauri::command]
+async fn move_download_to_top(s: tauri::State<'_, State>, id: DownloadId) -> Cmd<()> {
+    let mut ids =
+        s.0.list(Default::default())
+            .await
+            .map_err(err)?
+            .into_iter()
+            .map(|d| d.id)
+            .collect::<Vec<_>>();
+    ids.retain(|x| *x != id);
+    ids.insert(0, id);
+    s.0.reorder(ids).await.map_err(err)
+}
+#[tauri::command]
+async fn move_download_to_bottom(s: tauri::State<'_, State>, id: DownloadId) -> Cmd<()> {
+    let mut ids =
+        s.0.list(Default::default())
+            .await
+            .map_err(err)?
+            .into_iter()
+            .map(|d| d.id)
+            .collect::<Vec<_>>();
+    ids.retain(|x| *x != id);
+    ids.push(id);
+    s.0.reorder(ids).await.map_err(err)
+}
+#[tauri::command]
+async fn get_settings(s: tauri::State<'_, State>) -> Cmd<hyper_core::Settings> {
+    s.0.settings().await.map_err(err)
+}
+#[tauri::command]
+async fn update_settings(s: tauri::State<'_, State>, settings: hyper_core::Settings) -> Cmd<()> {
+    s.0.update_settings(settings).await.map_err(err)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -71,7 +117,13 @@ pub fn run() {
             remove_download,
             start_all,
             pause_all,
-            get_global_status
+            get_global_status,
+            reorder_downloads,
+            set_download_priority,
+            move_download_to_top,
+            move_download_to_bottom,
+            get_settings,
+            update_settings
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed")
