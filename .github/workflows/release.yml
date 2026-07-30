@@ -23,11 +23,17 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-22.04
-            bundles: appimage,deb
-            artifact: linux-x64
+            bundles: appimage
+            artifact: linux-appimage-x64
+          - platform: ubuntu-22.04
+            bundles: deb
+            artifact: linux-deb-x64
           - platform: windows-latest
-            bundles: nsis,msi
-            artifact: windows-x64
+            bundles: nsis
+            artifact: windows-nsis-x64
+          - platform: windows-latest
+            bundles: msi
+            artifact: windows-msi-x64
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
