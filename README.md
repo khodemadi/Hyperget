@@ -77,3 +77,5 @@ pnpm browser:package
 Read [Architecture](docs/ARCHITECTURE.md), [Testing](docs/TESTING.md), [Release](docs/RELEASE.md), [Contributing](CONTRIBUTING.md), and [Security](SECURITY.md).
 
 Licensed under the [MIT License](LICENSE).
+
+[ali's telegram](https://t.me/im_wrench) and [my telegram](https://t.me/Codino_dev)
