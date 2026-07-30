@@ -177,6 +177,7 @@ impl Store {
             quick_download_bar_expanded: get("quick_download_bar_expanded")?.is_none_or(|v| v == "true"),
             duplicate_filename_behavior: get("duplicate_filename_behavior")?
                 .unwrap_or_else(|| "rename".into()),
+            queue_execution_enabled: get("queue_execution_enabled")?.is_none_or(|v| v == "true"),
         })
     }
     pub fn update_settings(&mut self, s: &Settings) -> Result<()> {
@@ -194,6 +195,20 @@ impl Store {
             (
                 "default_connections_per_file",
                 s.default_connections_per_file.to_string(),
+            ),
+            ("default_retry_count", s.default_retry_count.to_string()),
+            (
+                "initial_retry_delay_seconds",
+                s.initial_retry_delay_seconds.to_string(),
+            ),
+            (
+                "maximum_retry_delay_seconds",
+                s.maximum_retry_delay_seconds.to_string(),
+            ),
+            ("auto_retry", s.auto_retry.to_string()),
+            (
+                "restore_unfinished_downloads",
+                s.restore_unfinished_downloads.to_string(),
             ),
             ("global_speed_limit_mode", s.global_speed_limit_mode.clone()),
             ("global_speed_limit_bytes", s.global_speed_limit_bytes.to_string()),
@@ -219,6 +234,7 @@ impl Store {
                 "duplicate_filename_behavior",
                 s.duplicate_filename_behavior.clone(),
             ),
+            ("queue_execution_enabled", s.queue_execution_enabled.to_string()),
         ];
         for (k, v) in vals {
             tx.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",params![k,v])?;

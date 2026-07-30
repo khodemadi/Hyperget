@@ -1,4 +1,12 @@
 # Changelog
+
+## v0.2.2-alpha
+
+- Removed the bottom Quick Download URL bar and added real backend global progress above the compact status bar.
+- Added byte-weighted known-size progress, unknown-size reporting, combined active speed, ETA, active filename, and persisted queue execution state.
+- Fixed unsafe URL rendering, unhandled Tauri command failures, overlapping polling, duplicate inbox polling, and wildcard dialog replacement.
+- Replaced scheduler `try_lock` failures with serialized scheduling and made Pause All block queued starts.
+- Added a Hyper Get React error boundary and in-app operation error notifications with redaction.
 ## [0.1.0-alpha.1] - Unreleased
 ### Added
 - Persistent SQLite download queue, resumable streaming core, CLI, and Tauri desktop shell.

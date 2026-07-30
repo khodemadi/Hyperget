@@ -64,36 +64,30 @@ impl DownloadManager {
     async fn schedule(&self) -> Result<()> {
         let _guard = self.scheduler.lock().await;
         let settings = self.store.lock().await.settings()?;
-        if !settings.auto_start_next {
+        if !settings.auto_start_next || !settings.queue_execution_enabled {
             return Ok(());
         }
-        let slots = usize::from(settings.maximum_simultaneous_downloads)
-            .saturating_sub(self.tasks.lock().await.len());
+        let mut tasks = self.tasks.lock().await;
+        let slots = usize::from(settings.maximum_simultaneous_downloads).saturating_sub(tasks.len());
         let queued = self.store.lock().await.list(&DownloadFilter {
             state: Some(DownloadState::Queued),
             search: None,
         })?;
         for d in queued.into_iter().take(slots) {
-            self.spawn(d.id)?;
+            self.spawn(d.id, &mut tasks);
         }
         Ok(())
     }
-    fn spawn(&self, id: DownloadId) -> Result<()> {
-        let mut tasks = self
-            .tasks
-            .try_lock()
-            .map_err(|_| Error::Task("scheduler task lock busy".into()))?;
+    fn spawn(&self, id: DownloadId, tasks: &mut HashMap<DownloadId, CancellationToken>) {
         if tasks.contains_key(&id) {
-            return Ok(());
+            return;
         }
         let token = CancellationToken::new();
         tasks.insert(id, token.clone());
-        drop(tasks);
         let this = self.clone();
         tokio::spawn(async move {
             let _ = this.run(id, token).await;
         });
-        Ok(())
     }
     async fn run(&self, id: DownloadId, token: CancellationToken) -> Result<()> {
         let result = self.run_inner(id, token).await;
@@ -402,6 +396,9 @@ impl DownloadService for DownloadManager {
         self.store.lock().await.get(id)
     }
     async fn start_all(&self) -> Result<()> {
+        let mut settings = self.settings().await?;
+        settings.queue_execution_enabled = true;
+        self.store.lock().await.update_settings(&settings)?;
         for d in self.list(Default::default()).await? {
             if matches!(d.state, DownloadState::Paused | DownloadState::Failed) {
                 self.store.lock().await.transition(d.id, DownloadState::Queued)?;
@@ -410,6 +407,9 @@ impl DownloadService for DownloadManager {
         self.schedule().await
     }
     async fn pause_all(&self) -> Result<()> {
+        let mut settings = self.settings().await?;
+        settings.queue_execution_enabled = false;
+        self.store.lock().await.update_settings(&settings)?;
         for d in self.list(Default::default()).await? {
             if d.state.is_active() {
                 self.pause(d.id).await?
@@ -421,6 +421,8 @@ impl DownloadService for DownloadManager {
         let all = self.list(Default::default()).await?;
         let mut g = GlobalStatus::default();
         let speeds = self.speeds.lock().await.clone();
+        let settings = self.settings().await?;
+        g.queue_execution_enabled = settings.queue_execution_enabled;
         for d in all {
             g.total += 1;
             if let Some(n) = d.total_bytes {
@@ -435,6 +437,9 @@ impl DownloadService for DownloadManager {
                 DownloadState::Completed => g.completed += 1,
                 DownloadState::Failed => g.failed += 1,
                 s if s.is_active() => {
+                    if g.active_filename.is_none() {
+                        g.active_filename = Some(d.filename.clone());
+                    }
                     g.active += 1;
                     g.active_connections += u32::from(d.connection_count);
                     g.combined_speed += speeds.get(&d.id).copied().unwrap_or(0);
@@ -463,5 +468,56 @@ impl DownloadService for DownloadManager {
     async fn update_settings(&self, settings: Settings) -> Result<()> {
         self.store.lock().await.update_settings(&settings)?;
         self.schedule().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(url: &str) -> AddDownloadRequest {
+        AddDownloadRequest {
+            url: url.into(),
+            output: None,
+            destination_directory: None,
+            connections: 1,
+            start_immediately: false,
+            checksum_sha256: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn global_status_is_byte_weighted_and_ignores_unknown_sizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = DownloadManager::open(dir.path().join("state.sqlite3"), dir.path()).unwrap();
+        let first = manager.add(request("https://example.com/a")).await.unwrap();
+        let second = manager.add(request("https://example.com/b")).await.unwrap();
+        let unknown = manager.add(request("https://example.com/c")).await.unwrap();
+        {
+            let store = manager.store.lock().await;
+            store.progress(first, 50, Some(100)).unwrap();
+            store.progress(second, 100, Some(300)).unwrap();
+            store.progress(unknown, 75, None).unwrap();
+            store.transition(first, DownloadState::Connecting).unwrap();
+            store.transition(second, DownloadState::Connecting).unwrap();
+        }
+        manager.speeds.lock().await.insert(first, 25);
+        manager.speeds.lock().await.insert(second, 75);
+        let status = manager.global_status().await.unwrap();
+        assert_eq!(status.downloaded_bytes, 150);
+        assert_eq!(status.known_total_bytes, 400);
+        assert_eq!(status.percentage, Some(37.5));
+        assert_eq!(status.unknown_size, 1);
+        assert_eq!(status.combined_speed, 100);
+    }
+
+    #[tokio::test]
+    async fn pause_and_start_all_persist_queue_execution_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = DownloadManager::open(dir.path().join("state.sqlite3"), dir.path()).unwrap();
+        manager.pause_all().await.unwrap();
+        assert!(!manager.settings().await.unwrap().queue_execution_enabled);
+        manager.start_all().await.unwrap();
+        assert!(manager.settings().await.unwrap().queue_execution_enabled);
     }
 }

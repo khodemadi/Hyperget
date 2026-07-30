@@ -147,6 +147,8 @@ pub struct GlobalStatus {
     pub unknown_size: u32,
     pub active_connections: u32,
     pub eta_seconds: Option<u64>,
+    pub active_filename: Option<String>,
+    pub queue_execution_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +175,7 @@ pub struct Settings {
     pub wildcard_auto_start: bool,
     pub quick_download_bar_expanded: bool,
     pub duplicate_filename_behavior: String,
+    pub queue_execution_enabled: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -199,6 +202,7 @@ impl Default for Settings {
             wildcard_auto_start: false,
             quick_download_bar_expanded: true,
             duplicate_filename_behavior: "rename".into(),
+            queue_execution_enabled: true,
         }
     }
 }

@@ -36,6 +36,16 @@ async fn remove_download(s: tauri::State<'_, State>, id: DownloadId, delete_data
     s.0.remove(id, delete_data).await.map_err(err)
 }
 #[tauri::command]
+async fn clear_downloads(s: tauri::State<'_, State>) -> Cmd<u64> {
+    s.0.pause_all().await.map_err(err)?;
+    let downloads = s.0.list(DownloadFilter::default()).await.map_err(err)?;
+    let count = downloads.len() as u64;
+    for download in downloads {
+        s.0.remove(download.id, false).await.map_err(err)?;
+    }
+    Ok(count)
+}
+#[tauri::command]
 async fn start_all(s: tauri::State<'_, State>) -> Cmd<()> {
     s.0.start_all().await.map_err(err)
 }
@@ -102,6 +112,12 @@ async fn probe_download_url(url: String) -> Cmd<serde_json::Value> {
     hyper_core::probe_url(&url).await.map_err(err)
 }
 #[tauri::command]
+async fn discover_batch_download(pattern: String, padding: usize, maximum: usize) -> Cmd<Vec<String>> {
+    hyper_core::discover_wildcard_urls(&pattern, padding, maximum)
+        .await
+        .map_err(err)
+}
+#[tauri::command]
 async fn add_batch_downloads(
     s: tauri::State<'_, State>,
     urls: Vec<String>,
@@ -146,8 +162,24 @@ fn validate_download_directory(path: std::path::PathBuf) -> Cmd<()> {
     std::fs::remove_file(probe).map_err(err)
 }
 #[tauri::command]
-fn choose_download_directory(app: tauri::AppHandle) -> Cmd<Option<String>> {
-    Ok(app.dialog().file().blocking_pick_folder().map(|p| p.to_string()))
+async fn choose_download_directory(app: tauri::AppHandle) -> Cmd<Option<String>> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |path| {
+        let _ = sender.send(path.map(|p| p.to_string()));
+    });
+    receiver.await.map_err(err)
+}
+#[tauri::command]
+fn open_logs_folder(app: tauri::AppHandle) -> Cmd<()> {
+    let path = app.path().app_log_dir().map_err(err)?;
+    std::fs::create_dir_all(&path).map_err(err)?;
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+    command.arg(path).spawn().map(|_| ()).map_err(err)
 }
 #[tauri::command]
 fn receive_browser_links(inbox: tauri::State<'_, Inbox>) -> Cmd<Vec<serde_json::Value>> {
@@ -194,6 +226,7 @@ pub fn run() {
             resume_download,
             cancel_download,
             remove_download,
+            clear_downloads,
             start_all,
             pause_all,
             get_global_status,
@@ -205,11 +238,13 @@ pub fn run() {
             update_settings,
             preview_batch_download,
             probe_download_url,
+            discover_batch_download,
             add_batch_downloads,
             receive_browser_links,
             get_system_download_directory,
             validate_download_directory,
-            choose_download_directory
+            choose_download_directory,
+            open_logs_folder
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed")

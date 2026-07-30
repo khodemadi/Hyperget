@@ -3,4 +3,4 @@ INSERT OR IGNORE INTO settings(key,value) VALUES
  ('remember_last_directory','true'),('last_selected_directory',''),
  ('create_category_subfolders','false'),('wildcard_batch_behavior','preview'),
  ('wildcard_auto_start','false'),('quick_download_bar_expanded','true'),
- ('duplicate_filename_behavior','rename');
+ ('duplicate_filename_behavior','rename'),('queue_execution_enabled','true');
