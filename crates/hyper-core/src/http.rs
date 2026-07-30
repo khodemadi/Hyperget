@@ -2,12 +2,12 @@ use crate::{Error, Result};
 use reqwest::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, ETAG, LAST_MODIFIED, RANGE};
 use url::Url;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteMetadata {
     pub final_url: String,
-    pub _filename: String,
+    pub filename: String,
     pub total: Option<u64>,
-    pub _ranges: bool,
+    pub ranges: bool,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
 }
@@ -60,9 +60,9 @@ pub async fn probe(client: &reqwest::Client, raw: &str) -> Result<RemoteMetadata
         .unwrap_or_else(|| "download".into());
     Ok(RemoteMetadata {
         final_url: final_url.to_string(),
-        _filename: sanitize_filename(&filename),
+        filename: sanitize_filename(&filename),
         total,
-        _ranges: ranges,
+        ranges,
         etag: header(&headers, ETAG),
         last_modified: header(&headers, LAST_MODIFIED),
     })
@@ -102,9 +102,30 @@ pub fn sanitize_filename(v: &str) -> String {
         })
         .collect();
     let s = s.trim_matches([' ', '.']);
-    if s.is_empty() || s == ".." {
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    if s.is_empty()
+        || s == ".."
+        || reserved.iter().any(|name| {
+            s.split('.')
+                .next()
+                .is_some_and(|part| part.eq_ignore_ascii_case(name))
+        })
+    {
         "download".into()
     } else {
         s.chars().take(240).collect()
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn traversal_and_windows_names_are_safe() {
+        assert_eq!(sanitize_filename("../../evil.exe"), "_.._evil.exe");
+        assert_eq!(sanitize_filename("CON.txt"), "download");
+        assert_eq!(sanitize_filename("a\0b.zip"), "a_b.zip")
     }
 }

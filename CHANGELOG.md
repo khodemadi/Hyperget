@@ -7,3 +7,4 @@
 - Windows NSIS/MSI release jobs with SHA-256 checksums.
 - Custom clipboard, multiple-URL and wildcard batch dialogs backed by Rust batch expansion.
 - Buildable Chromium and Firefox extension packages plus a bounded Native Messaging host.
+- Stable dialog focus, single-wildcard batches, persistent Quick Download, and OS-aware destinations.

@@ -75,6 +75,7 @@ impl DownloadState {
 pub struct AddDownloadRequest {
     pub url: String,
     pub output: Option<PathBuf>,
+    pub destination_directory: Option<PathBuf>,
     pub connections: u8,
     pub start_immediately: bool,
     pub checksum_sha256: Option<String>,
@@ -84,6 +85,7 @@ impl Default for AddDownloadRequest {
         Self {
             url: String::new(),
             output: None,
+            destination_directory: None,
             connections: 4,
             start_immediately: false,
             checksum_sha256: None,
@@ -162,6 +164,15 @@ pub struct Settings {
     pub default_priority: Priority,
     pub confirm_before_delete: bool,
     pub theme: String,
+    pub default_download_directory: String,
+    pub ask_where_to_save: bool,
+    pub remember_last_directory: bool,
+    pub last_selected_directory: String,
+    pub create_category_subfolders: bool,
+    pub wildcard_batch_behavior: String,
+    pub wildcard_auto_start: bool,
+    pub quick_download_bar_expanded: bool,
+    pub duplicate_filename_behavior: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -179,6 +190,15 @@ impl Default for Settings {
             default_priority: Priority::Normal,
             confirm_before_delete: true,
             theme: "system".into(),
+            default_download_directory: String::new(),
+            ask_where_to_save: false,
+            remember_last_directory: true,
+            last_selected_directory: String::new(),
+            create_category_subfolders: false,
+            wildcard_batch_behavior: "preview".into(),
+            wildcard_auto_start: false,
+            quick_download_bar_expanded: true,
+            duplicate_filename_behavior: "rename".into(),
         }
     }
 }

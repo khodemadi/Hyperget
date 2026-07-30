@@ -19,6 +19,7 @@ impl Store {
         if !migrated {
             conn.execute_batch(include_str!("../migrations/002_queue_settings.sql"))?;
         }
+        conn.execute_batch(include_str!("../migrations/003_download_preferences.sql"))?;
         let s = Self { conn };
         s.recover()?;
         Ok(s)
@@ -166,6 +167,16 @@ impl Store {
             default_priority: parse_priority(&get("default_priority")?.unwrap_or_default()),
             confirm_before_delete: get("confirm_before_delete")?.is_none_or(|v| v == "true"),
             theme: get("theme")?.unwrap_or(d.theme),
+            default_download_directory: get("default_download_directory")?.unwrap_or_default(),
+            ask_where_to_save: get("ask_where_to_save")?.is_some_and(|v| v == "true"),
+            remember_last_directory: get("remember_last_directory")?.is_none_or(|v| v == "true"),
+            last_selected_directory: get("last_selected_directory")?.unwrap_or_default(),
+            create_category_subfolders: get("create_category_subfolders")?.is_some_and(|v| v == "true"),
+            wildcard_batch_behavior: get("wildcard_batch_behavior")?.unwrap_or_else(|| "preview".into()),
+            wildcard_auto_start: get("wildcard_auto_start")?.is_some_and(|v| v == "true"),
+            quick_download_bar_expanded: get("quick_download_bar_expanded")?.is_none_or(|v| v == "true"),
+            duplicate_filename_behavior: get("duplicate_filename_behavior")?
+                .unwrap_or_else(|| "rename".into()),
         })
     }
     pub fn update_settings(&mut self, s: &Settings) -> Result<()> {
@@ -190,6 +201,24 @@ impl Store {
             ("default_priority", priority(s.default_priority).into()),
             ("confirm_before_delete", s.confirm_before_delete.to_string()),
             ("theme", s.theme.clone()),
+            ("default_download_directory", s.default_download_directory.clone()),
+            ("ask_where_to_save", s.ask_where_to_save.to_string()),
+            ("remember_last_directory", s.remember_last_directory.to_string()),
+            ("last_selected_directory", s.last_selected_directory.clone()),
+            (
+                "create_category_subfolders",
+                s.create_category_subfolders.to_string(),
+            ),
+            ("wildcard_batch_behavior", s.wildcard_batch_behavior.clone()),
+            ("wildcard_auto_start", s.wildcard_auto_start.to_string()),
+            (
+                "quick_download_bar_expanded",
+                s.quick_download_bar_expanded.to_string(),
+            ),
+            (
+                "duplicate_filename_behavior",
+                s.duplicate_filename_behavior.clone(),
+            ),
         ];
         for (k, v) in vals {
             tx.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",params![k,v])?;

@@ -17,9 +17,14 @@ pub struct BatchPreviewRequest {
 
 pub fn expand_wildcards(request: &BatchPreviewRequest) -> Result<Vec<String>> {
     let count = request.pattern.matches('*').count();
-    if count == 0 || count > 2 || count != request.ranges.len() {
+    if count != 1 || request.ranges.len() != 1 {
         return Err(Error::Task(
-            "pattern must contain one or two wildcards with matching ranges".into(),
+            if count > 1 {
+                "multiple wildcards are not supported in this version"
+            } else {
+                "pattern must contain exactly one wildcard"
+            }
+            .into(),
         ));
     }
     let mut values = Vec::with_capacity(count);
@@ -56,10 +61,6 @@ pub fn expand_wildcards(request: &BatchPreviewRequest) -> Result<Vec<String>> {
     for first in &values[0] {
         if count == 1 {
             out.push(format!("{}{}{}", parts[0], first, parts[1]));
-        } else {
-            for second in &values[1] {
-                out.push(format!("{}{}{}{}{}", parts[0], first, parts[1], second, parts[2]));
-            }
         }
     }
     out.dedup();
@@ -88,8 +89,8 @@ mod tests {
         )
     }
     #[test]
-    fn two_wildcards_preserve_order() {
-        let x = expand_wildcards(&BatchPreviewRequest {
+    fn multiple_wildcards_are_rejected() {
+        let result = expand_wildcards(&BatchPreviewRequest {
             pattern: "https://x/d*/v*.mp4".into(),
             ranges: vec![
                 WildcardRange {
@@ -106,10 +107,8 @@ mod tests {
                 },
             ],
             maximum: 10,
-        })
-        .unwrap();
-        assert_eq!(x[0], "https://x/d1/v01.mp4");
-        assert_eq!(x[3], "https://x/d2/v02.mp4")
+        });
+        assert!(result.is_err())
     }
     #[test]
     fn safety_limit() {
@@ -123,6 +122,30 @@ mod tests {
                     padding: 0
                 }],
                 maximum: 100
+            })
+            .is_err()
+        )
+    }
+    #[test]
+    fn missing_wildcard_and_zero_step_are_rejected() {
+        assert!(
+            expand_wildcards(&BatchPreviewRequest {
+                pattern: "https://x/file.zip".into(),
+                ranges: vec![],
+                maximum: 10
+            })
+            .is_err()
+        );
+        assert!(
+            expand_wildcards(&BatchPreviewRequest {
+                pattern: "https://x/file*.zip".into(),
+                ranges: vec![WildcardRange {
+                    start: 1,
+                    end: 2,
+                    step: 0,
+                    padding: 0
+                }],
+                maximum: 10
             })
             .is_err()
         )

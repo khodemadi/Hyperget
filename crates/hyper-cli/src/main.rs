@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
                 .add(AddDownloadRequest {
                     url,
                     output,
+                    destination_directory: None,
                     connections,
                     start_immediately: !no_start,
                     checksum_sha256: None,

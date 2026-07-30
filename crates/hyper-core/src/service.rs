@@ -233,6 +233,17 @@ impl DownloadManager {
         Ok(())
     }
 }
+fn safe_destination(directory: &Path, filename: &str) -> Result<PathBuf> {
+    if filename.contains('\0') {
+        return Err(Error::Task("filename contains a null byte".into()));
+    }
+    let clean = http::sanitize_filename(filename);
+    let joined = directory.join(clean);
+    if !joined.starts_with(directory) {
+        return Err(Error::Task("destination escapes selected directory".into()));
+    }
+    Ok(joined)
+}
 #[async_trait]
 impl DownloadService for DownloadManager {
     async fn add(&self, r: AddDownloadRequest) -> Result<DownloadId> {
@@ -254,7 +265,41 @@ impl DownloadService for DownloadManager {
                     .map(http::sanitize_filename)
             })
             .unwrap_or_else(|| "download".into());
-        let destination = r.output.unwrap_or_else(|| self.default_dir.join(&filename));
+        let mut destination = if let Some(output) = r.output {
+            output
+        } else if let Some(directory) = r.destination_directory {
+            safe_destination(&directory, &filename)?
+        } else {
+            let configured = self.store.lock().await.settings()?.default_download_directory;
+            if configured.is_empty() {
+                self.default_dir.join(&filename)
+            } else {
+                safe_destination(Path::new(&configured), &filename)?
+            }
+        };
+        let existing = self.store.lock().await.list(&DownloadFilter::default())?;
+        if existing.iter().any(|d| d.destination == destination) || destination.exists() {
+            let stem = destination
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .unwrap_or("download")
+                .to_owned();
+            let extension = destination
+                .extension()
+                .and_then(|v| v.to_str())
+                .map(str::to_owned);
+            let parent = destination.parent().unwrap_or(Path::new(".")).to_owned();
+            for index in 1..10_000 {
+                let candidate = parent.join(match &extension {
+                    Some(ext) => format!("{stem} ({index}).{ext}"),
+                    None => format!("{stem} ({index})"),
+                });
+                if !candidate.exists() && !existing.iter().any(|d| d.destination == candidate) {
+                    destination = candidate;
+                    break;
+                }
+            }
+        }
         let temp = self.default_dir.join(".hyper-get").join(id.to_string());
         let now = chrono::Utc::now().to_rfc3339();
         let d = DownloadSnapshot {

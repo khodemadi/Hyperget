@@ -1,5 +1,6 @@
 use hyper_core::{AddDownloadRequest, DownloadFilter, DownloadId, DownloadManager, DownloadService};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 struct State(DownloadManager);
 struct Inbox(std::path::PathBuf);
 type Cmd<T> = std::result::Result<T, String>;
@@ -97,11 +98,16 @@ fn preview_batch_download(request: hyper_core::BatchPreviewRequest) -> Cmd<Vec<S
     hyper_core::expand_wildcards(&request).map_err(err)
 }
 #[tauri::command]
+async fn probe_download_url(url: String) -> Cmd<serde_json::Value> {
+    hyper_core::probe_url(&url).await.map_err(err)
+}
+#[tauri::command]
 async fn add_batch_downloads(
     s: tauri::State<'_, State>,
     urls: Vec<String>,
     connections: u8,
     start_immediately: bool,
+    destination: Option<std::path::PathBuf>,
 ) -> Cmd<Vec<DownloadId>> {
     if urls.len() > 10_000 {
         return Err("batch exceeds 10,000 URLs".into());
@@ -114,6 +120,7 @@ async fn add_batch_downloads(
                 connections,
                 start_immediately,
                 output: None,
+                destination_directory: destination.clone(),
                 checksum_sha256: None,
             })
             .await
@@ -121,6 +128,26 @@ async fn add_batch_downloads(
         );
     }
     Ok(ids)
+}
+#[tauri::command]
+fn get_system_download_directory(app: tauri::AppHandle) -> Cmd<String> {
+    app.path()
+        .download_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(err)
+}
+#[tauri::command]
+fn validate_download_directory(path: std::path::PathBuf) -> Cmd<()> {
+    if !path.is_dir() {
+        return Err("selected path is not a directory".into());
+    }
+    let probe = path.join(format!(".hyper-get-write-test-{}", uuid::Uuid::new_v4()));
+    std::fs::write(&probe, b"").map_err(|e| format!("directory is not writable: {e}"))?;
+    std::fs::remove_file(probe).map_err(err)
+}
+#[tauri::command]
+fn choose_download_directory(app: tauri::AppHandle) -> Cmd<Option<String>> {
+    Ok(app.dialog().file().blocking_pick_folder().map(|p| p.to_string()))
 }
 #[tauri::command]
 fn receive_browser_links(inbox: tauri::State<'_, Inbox>) -> Cmd<Vec<serde_json::Value>> {
@@ -144,6 +171,7 @@ fn receive_browser_links(inbox: tauri::State<'_, Inbox>) -> Cmd<Vec<serde_json::
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let downloads = app
@@ -176,8 +204,12 @@ pub fn run() {
             get_settings,
             update_settings,
             preview_batch_download,
+            probe_download_url,
             add_batch_downloads,
-            receive_browser_links
+            receive_browser_links,
+            get_system_download_directory,
+            validate_download_directory,
+            choose_download_directory
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed")
