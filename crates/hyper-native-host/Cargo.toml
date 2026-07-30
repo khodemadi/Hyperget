@@ -1,0 +1,11 @@
+[package]
+name="hyper-native-host"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+[[bin]]
+name="hyper-get-native-host"
+path="src/main.rs"
+[dependencies]
+serde_json.workspace=true
+uuid.workspace=true

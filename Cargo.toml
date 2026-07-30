@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/hyper-core", "crates/hyper-cli", "apps/desktop/src-tauri"]
+members = ["crates/hyper-core", "crates/hyper-cli", "crates/hyper-native-host", "apps/desktop/src-tauri"]
 resolver = "2"
 
 [workspace.package]

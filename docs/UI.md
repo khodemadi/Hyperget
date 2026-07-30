@@ -1,2 +1,4 @@
 # UI
 The desktop uses a compact responsive list, keyboard-focusable rows, light/dark persistence, real polling, status filtering, priority and persistent drag ordering, interactive aggregate status, and explicit non-destructive removal. The global limit control changes the live Core limiter. Browser-captured links and schedule-based limits remain outside this milestone.
+
+All current confirmations and forms use reusable accessible Hyper Get dialogs; browser `prompt`, `alert`, and `confirm` are not used. Pressing Ctrl+V outside editable controls reads the clipboard once, recognizes one or multiple HTTP(S) URLs, and opens a confirmation dialog. Clipboard monitoring is off and no background reads occur. URLs with one or two `*` placeholders open Batch Download and are expanded by the Rust Core with ordering and safety limits.

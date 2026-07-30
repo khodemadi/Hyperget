@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Core application window only","local":true,"windows":["main"],"permissions":["core:default"]}}
+{"default":{"identifier":"default","description":"Core window and user-triggered clipboard reads","local":true,"windows":["main"],"permissions":["core:default","clipboard-manager:allow-read-text"]}}

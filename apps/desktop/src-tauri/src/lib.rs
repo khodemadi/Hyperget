@@ -1,6 +1,7 @@
 use hyper_core::{AddDownloadRequest, DownloadFilter, DownloadId, DownloadManager, DownloadService};
 use tauri::Manager;
 struct State(DownloadManager);
+struct Inbox(std::path::PathBuf);
 type Cmd<T> = std::result::Result<T, String>;
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -91,9 +92,58 @@ async fn get_settings(s: tauri::State<'_, State>) -> Cmd<hyper_core::Settings> {
 async fn update_settings(s: tauri::State<'_, State>, settings: hyper_core::Settings) -> Cmd<()> {
     s.0.update_settings(settings).await.map_err(err)
 }
+#[tauri::command]
+fn preview_batch_download(request: hyper_core::BatchPreviewRequest) -> Cmd<Vec<String>> {
+    hyper_core::expand_wildcards(&request).map_err(err)
+}
+#[tauri::command]
+async fn add_batch_downloads(
+    s: tauri::State<'_, State>,
+    urls: Vec<String>,
+    connections: u8,
+    start_immediately: bool,
+) -> Cmd<Vec<DownloadId>> {
+    if urls.len() > 10_000 {
+        return Err("batch exceeds 10,000 URLs".into());
+    }
+    let mut ids = Vec::with_capacity(urls.len());
+    for url in urls {
+        ids.push(
+            s.0.add(AddDownloadRequest {
+                url,
+                connections,
+                start_immediately,
+                output: None,
+                checksum_sha256: None,
+            })
+            .await
+            .map_err(err)?,
+        );
+    }
+    Ok(ids)
+}
+#[tauri::command]
+fn receive_browser_links(inbox: tauri::State<'_, Inbox>) -> Cmd<Vec<serde_json::Value>> {
+    let mut messages = Vec::new();
+    std::fs::create_dir_all(&inbox.0).map_err(err)?;
+    for entry in std::fs::read_dir(&inbox.0).map_err(err)? {
+        let path = entry.map_err(err)?.path();
+        if path.extension().and_then(|v| v.to_str()) != Some("json") {
+            continue;
+        }
+        let data = std::fs::read(&path).map_err(err)?;
+        if data.len() > 1024 * 1024 {
+            continue;
+        }
+        messages.push(serde_json::from_slice(&data).map_err(err)?);
+        std::fs::remove_file(path).map_err(err)?;
+    }
+    Ok(messages)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let downloads = app
@@ -104,6 +154,7 @@ pub fn run() {
                 DownloadManager::open(dir.join("hyper-get.sqlite3"), downloads)
                     .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?,
             ));
+            app.manage(Inbox(dir.join("browser-inbox")));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -123,7 +174,10 @@ pub fn run() {
             move_download_to_top,
             move_download_to_bottom,
             get_settings,
-            update_settings
+            update_settings,
+            preview_batch_download,
+            add_batch_downloads,
+            receive_browser_links
         ])
         .run(tauri::generate_context!())
         .expect("Tauri runtime failed")
