@@ -1,0 +1,17 @@
+/target/
+node_modules/
+dist/
+*.sqlite3*
+*.part
+*.segment
+*.log
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.AppImage
+*.deb
+*.msi
+*.exe
+

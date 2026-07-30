@@ -1,0 +1,1 @@
+{"name":"hyper-get","private":true,"packageManager":"pnpm@10.14.0","scripts":{"lint":"pnpm --filter @hyper-get/desktop lint","typecheck":"pnpm --filter @hyper-get/desktop typecheck","test":"pnpm --filter @hyper-get/desktop test","build":"pnpm --filter @hyper-get/desktop build"}}

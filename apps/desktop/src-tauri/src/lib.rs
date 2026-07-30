@@ -1,0 +1,78 @@
+use hyper_core::{AddDownloadRequest, DownloadFilter, DownloadId, DownloadManager, DownloadService};
+use tauri::Manager;
+struct State(DownloadManager);
+type Cmd<T> = std::result::Result<T, String>;
+fn err(e: impl ToString) -> String {
+    e.to_string()
+}
+#[tauri::command]
+async fn add_download(s: tauri::State<'_, State>, request: AddDownloadRequest) -> Cmd<DownloadId> {
+    s.0.add(request).await.map_err(err)
+}
+#[tauri::command]
+async fn list_downloads(s: tauri::State<'_, State>) -> Cmd<Vec<hyper_core::DownloadSnapshot>> {
+    s.0.list(DownloadFilter::default()).await.map_err(err)
+}
+#[tauri::command]
+async fn get_download(s: tauri::State<'_, State>, id: DownloadId) -> Cmd<hyper_core::DownloadSnapshot> {
+    s.0.get(id).await.map_err(err)
+}
+macro_rules! action {
+    ($name:ident,$method:ident) => {
+        #[tauri::command]
+        async fn $name(s: tauri::State<'_, State>, id: DownloadId) -> Cmd<()> {
+            s.0.$method(id).await.map_err(err)
+        }
+    };
+}
+action!(start_download, start);
+action!(pause_download, pause);
+action!(resume_download, resume);
+action!(cancel_download, cancel);
+#[tauri::command]
+async fn remove_download(s: tauri::State<'_, State>, id: DownloadId, delete_data: bool) -> Cmd<()> {
+    s.0.remove(id, delete_data).await.map_err(err)
+}
+#[tauri::command]
+async fn start_all(s: tauri::State<'_, State>) -> Cmd<()> {
+    s.0.start_all().await.map_err(err)
+}
+#[tauri::command]
+async fn pause_all(s: tauri::State<'_, State>) -> Cmd<()> {
+    s.0.pause_all().await.map_err(err)
+}
+#[tauri::command]
+async fn get_global_status(s: tauri::State<'_, State>) -> Cmd<hyper_core::GlobalStatus> {
+    s.0.global_status().await.map_err(err)
+}
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            let dir = app.path().app_data_dir()?;
+            let downloads = app
+                .path()
+                .download_dir()
+                .unwrap_or_else(|_| dir.join("downloads"));
+            app.manage(State(
+                DownloadManager::open(dir.join("hyper-get.sqlite3"), downloads)
+                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?,
+            ));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            add_download,
+            list_downloads,
+            get_download,
+            start_download,
+            pause_download,
+            resume_download,
+            cancel_download,
+            remove_download,
+            start_all,
+            pause_all,
+            get_global_status
+        ])
+        .run(tauri::generate_context!())
+        .expect("Tauri runtime failed")
+}

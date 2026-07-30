@@ -1,0 +1,17 @@
+[package]
+name="hyper-get-desktop"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+[lib]
+name="hyper_get_desktop"
+crate-type= ["staticlib", "cdylib", "rlib"]
+[build-dependencies]
+tauri-build= {version="2",features= [] }
+[dependencies]
+hyper-core= {path="../../../crates/hyper-core"}
+serde.workspace=true
+tauri= {version="2",features= [] }
+tokio.workspace=true
+uuid.workspace=true
+

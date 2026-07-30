@@ -1,0 +1,24 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix: {platform: [ubuntu-22.04, windows-latest]}
+    runs-on: ${{ matrix.platform }}
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with: {version: 10.14.0}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: pnpm}
+      - if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env: {GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+        with: {tagName: '${{ github.ref_name }}', releaseName: 'Hyper Get ${{ github.ref_name }}', releaseDraft: true, prerelease: true}
