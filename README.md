@@ -17,3 +17,4 @@ pnpm --filter @hyper-get/desktop tauri dev
 By default the CLI stores its database and downloads under the platform data directory. Set `HYPER_GET_DATA_DIR` to use an explicit location. SQLite WAL and a busy timeout provide safe serialization; avoid controlling the same active download from two processes in this alpha.
 
 See [Architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), and [release notes](docs/RELEASE.md).
+   
