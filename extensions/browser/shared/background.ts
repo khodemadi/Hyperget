@@ -14,12 +14,25 @@ function send(message: BrowserMessage) {
     );
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-        id: "single",
-        title: "Download with Hyper Get",
-        contexts: ["link"],
+function createMenus() {
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+            id: "single",
+            title: "Download with Hyper Get",
+            contexts: ["link"],
+        });
+
+        chrome.contextMenus.create({
+            id: "all",
+            title: "Download all links with Hyper Get",
+            contexts: ["page"],
+        });
     });
+}
+
+createMenus();
+chrome.runtime.onInstalled.addListener(createMenus);
+chrome.runtime.onStartup.addListener(createMenus);
 
     chrome.contextMenus.create({
         id: "all",
