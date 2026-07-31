@@ -21,6 +21,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .get("type")
         .and_then(|v| v.as_str())
         .ok_or("missing message type")?;
+	if kind == "open_application" {
+    std::process::Command::new("hyper-get")
+        .spawn()?;
+
+    reply(&serde_json::json!({
+        "accepted": true,
+        "desktopAvailable": true
+    }))?;
+
+    return Ok(());
+}
     if !matches!(
         kind,
         "send_single_download" | "send_page_links" | "ping" | "get_desktop_status" | "open_application"
