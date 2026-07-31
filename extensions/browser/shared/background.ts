@@ -63,7 +63,6 @@ chrome.runtime.onMessage.addListener((message: any) => {
     }
 });
 
-// 👇 با کلیک روی آیکون اکستنشن
 chrome.action.onClicked.addListener(() => {
     void send({
         type: "open_application",
