@@ -66,7 +66,6 @@ chrome.runtime.onMessage.addListener((message: any) => {
 chrome.action.onClicked.addListener(() => {
     void send({
         type: "open_application",
-        payload: {},
     }).catch(() =>
         chrome.notifications.create({
             type: "basic",
