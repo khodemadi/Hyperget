@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Browser integration: register the Native Messaging host for Firefox (and Brave/Edge/Vivaldi), pin the Chromium dev extension ID, use `browserAction` on Firefox, surface host rejections as notifications, inject the content script on demand, launch the real desktop binary, and stop one corrupt inbox file from blocking all later messages.
+
 ## v0.2.2-alpha
 
 - Removed the bottom Quick Download URL bar and added real backend global progress above the compact status bar.

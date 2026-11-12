@@ -22,7 +22,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|v| v.as_str())
         .ok_or("missing message type")?;
     if kind == "open_application" {
-        std::process::Command::new("hyper-get").spawn()?;
+        launch_desktop()?;
 
         reply(&serde_json::json!({
             "accepted": true,
@@ -47,6 +47,47 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     reply(&serde_json::json!({"accepted":true,"desktopAvailable":true}))?;
     Ok(())
+}
+/// Starts the desktop app. Order: `HYPER_GET_APP`, then executables next to this
+/// host, then names on `PATH`. The Tauri binary is called `hyper-get-desktop`.
+fn launch_desktop() -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::{Command, Stdio};
+
+    let spawn = |program: &std::ffi::OsStr| {
+        Command::new(program)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(|_| ())
+    };
+
+    if let Some(path) = std::env::var_os("HYPER_GET_APP") {
+        return spawn(&path).map_err(|e| format!("cannot start HYPER_GET_APP: {e}").into());
+    }
+
+    let names: &[&str] = if cfg!(windows) {
+        &["hyper-get-desktop.exe", "Hyper Get.exe", "hyper-get.exe"]
+    } else {
+        &["hyper-get-desktop", "hyper-get"]
+    };
+
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())) {
+        for name in names {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return spawn(candidate.as_os_str()).map_err(|e| format!("cannot start desktop app: {e}").into());
+            }
+        }
+    }
+
+    for name in names {
+        if spawn(std::ffi::OsStr::new(name)).is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err("Hyper Get desktop app not found; set HYPER_GET_APP to its full path".into())
 }
 fn reply(v: &serde_json::Value) -> std::io::Result<()> {
     let data = serde_json::to_vec(v)?;

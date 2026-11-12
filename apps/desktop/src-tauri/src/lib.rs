@@ -190,12 +190,18 @@ fn receive_browser_links(inbox: tauri::State<'_, Inbox>) -> Cmd<Vec<serde_json::
         if path.extension().and_then(|v| v.to_str()) != Some("json") {
             continue;
         }
-        let data = std::fs::read(&path).map_err(err)?;
+        let data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(_) => continue,
+        };
+        // Always consume the file; a corrupt or oversized message must not block the inbox forever.
+        let _ = std::fs::remove_file(&path);
         if data.len() > 1024 * 1024 {
             continue;
         }
-        messages.push(serde_json::from_slice(&data).map_err(err)?);
-        std::fs::remove_file(path).map_err(err)?;
+        if let Ok(value) = serde_json::from_slice(&data) {
+            messages.push(value);
+        }
     }
     Ok(messages)
 }

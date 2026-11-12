@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 base="${XDG_CONFIG_HOME:-$HOME/.config}"
-for path in "$base/google-chrome/NativeMessagingHosts/io.github.hyper_get.json" "$base/chromium/NativeMessagingHosts/io.github.hyper_get.json" "$base/microsoft-edge/NativeMessagingHosts/io.github.hyper_get.json"; do [[ ! -f "$path" ]] || rm "$path"; done
+name="io.github.hyper_get.json"
+for dir in chromium google-chrome google-chrome-beta google-chrome-unstable microsoft-edge BraveSoftware/Brave-Browser vivaldi; do
+    path="$base/$dir/NativeMessagingHosts/$name"
+    [[ ! -f "$path" ]] || rm "$path"
+done
+path="$HOME/.mozilla/native-messaging-hosts/$name"
+[[ ! -f "$path" ]] || rm "$path"
